@@ -1,0 +1,177 @@
+---
+title: "BFH_comment_charts"
+author: Sophie Moullin
+output:
+  html_document: default
+  word_document: default
+---
+
+# code for the graphics in Moullin and Harkness (2021, AJS)
+# uses code examples from Healy's Data Vizualization (PUP), see https://socviz.co/
+
+# uses the data tables produced from LISSY data. LIS data requires Stata code, and that it be run through those who house the data. This code was authored by Susan Harkness, and is available as an online appendix to the article. 
+
+```{r setup, echo=FALSE, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(openxlsx)
+library(here) 
+```
+
+```{r fig 1, echo=FALSE}
+#Figure 1: Prevalances
+LIS_prev <- read.xlsx(here("LIS_results", "BFH_data.xlsx"), sheet="Prevalence") 
+colnames(LIS_prev) <- gsub("\\.", " ", colnames(LIS_prev)) # prevents conversion of space to dot
+
+# group prevalences by country and order by prevalences
+LIS_prev <- LIS_prev %>% 
+          gather(household, prevalence, -(Country)) %>%  mutate(Country=fct_reorder(Country, desc(prevalence), na.rm=T))
+View(LIS_prev) 
+
+prev <- ggplot(data = LIS_prev,
+               aes(x=Country, y=prevalence, color=household, na.rm=F))
+prevalence <- prev + geom_point(na.rm = F) + labs(x=NULL, y="% of households with head < 65", title="Prevalence of Single Mother Households",
+                                          caption="Source: Luxembourg Income Study.")+ theme(legend.position = "top", legend.title=element_blank(), axis.text.x = element_text(angle=45)) + scale_y_continuous(labels =scales::percent_format(accuracy=1), limits=c(0,0.125)) 
+prevalence
+ggsave(here("Figures", "prevalence.pdf"))
+```
+
+# Figure 1: Prevalence of Single Mother Headed Households and Households Containing Single Mothers
+
+```{r Fig 1, fig.height=5, fig.width=8}
+# prevalence for publication - grey scale, no titles, captions
+
+# nb: theme_bw has to come before other theme options
+Fig1 <- prev + geom_point(na.rm = F, size=2) + 
+  labs(x=NULL, y="% of households with head < 65") + theme_bw() + theme(text=element_text(family="sans"), legend.position = "top", legend.text=element_text(size=12), legend.title=element_blank(), axis.text.x= element_text(angle=45, size=12), axis.text.y=element_text(size=12), axis.title=element_text(size=12), panel.border = element_blank()) + scale_y_continuous(labels =scales::percent_format(accuracy=1), limits=c(0,0.125)) + scale_color_grey() 
+Fig1
+ggsave(here("Figures", "Fig1.pdf"), plot=Fig1)
+ggsave(here("Figures", "Fig1.png"), plot=Fig1)
+```
+
+# Figure 2: Single Parents’ Probability of Non-Employment vs. Couple Families by Gender
+
+```{r Fig 2, echo=FALSE, fig.height=4, fig.width=6}
+LIS_emp <- read.xlsx(here("LIS_results", "BFH_data.xlsx"), sheet="Nonemployment", startRow=2) 
+names(LIS_emp) <- make.unique(names(LIS_emp)) # distinguishes model estimates 
+View(LIS_emp)
+
+mumemp <- select(LIS_emp, Country, penalty, se) %>%
+  mutate(upper=penalty+se, lower=penalty-se, gender="Single Mothers", penalty=penalty) %>% select(Country, penalty, upper, lower, gender) 
+
+dademp <- select(LIS_emp, Country, penalty.1, se.1) %>%
+  mutate(upper=penalty.1+se.1, lower=penalty.1-se.1, gender="Single Fathers", penalty=penalty.1) %>% select(Country, penalty, upper, lower, gender) 
+
+LIS_empall <- rbind(mumemp, dademp) 
+View(LIS_empall) 
+
+# w/o countries where sample size of single fathers is < 100
+samp_size <- read.xlsx(here("LIS_results", "BFH_data.xlsx"), sheet="Sample_Size") 
+emp_samp <- inner_join(LIS_empall, samp_size, by="Country")
+View(emp_samp)
+
+LIS_empsub <- emp_samp %>% filter(Single.Fathers > 100) %>% select(Country, penalty, upper, lower, gender) 
+View(LIS_empsub)
+
+emp <- ggplot(LIS_empsub, aes(x=reorder(Country, desc(penalty)), y=penalty, ymin=lower, ymax=upper)) # orders by average penalty across models 
+
+Fig2 <- emp + geom_pointrange(aes(color=gender), position=position_dodge(width=0.5)) + labs(x=NULL, y="Probability of Non-Employment \n vs. Couple Families") + theme_bw() + theme(text=element_text(family="sans"), legend.position = "top", legend.text=element_text(size=12), legend.title=element_blank(), axis.text.x= element_text(angle=75, size=12),  axis.title=element_text(size=12), panel.border = element_blank()) +  scale_y_continuous(labels =scales::percent_format(accuracy=1)) + scale_color_manual(values=c("grey", "black")) + geom_hline(yintercept = 0, lty="dashed")
+Fig2
+ggsave(here("Figures", "Fig2.pdf"))
+ggsave(here("Figures", "Fig2.png"))
+```
+
+```{r penalties, echo=FALSE, fig.height=9, fig.width=7}
+#Figure 3: penalities
+LIS_pen <- read.xlsx(here("LIS_results", "BFH_data.xlsx"), sheet="Penalties", startRow=2) # drops first row with model names 
+names(LIS_pen) <- make.unique(names(LIS_pen)) # distinguishes model estimates 
+View(LIS_pen)
+
+model0 <- select(LIS_pen, Country, penalty, se) %>%
+  mutate(model="BFH", penalty=penalty, upper=penalty, lower=penalty) %>%
+  select(Country, penalty, upper, lower, model) 
+
+model1 <- select(LIS_pen, Country, penalty.1, se.1) %>%
+  mutate(upper=penalty.1+se.1, lower=penalty.1-se.1, model="BFH, 2010", penalty=penalty.1) %>%
+ select(Country, penalty, upper, lower, model)
+
+model2 <- select(LIS_pen, Country, penalty.2, se.2) %>%
+  mutate(upper=penalty.2+se.2, lower=penalty.2-se.2, model="Adj.1", penalty=penalty.2) %>%
+  select(Country, penalty, upper, lower, model) %>%  filter(!is.na(penalty))
+
+model3 <- select(LIS_pen, Country, penalty.3, se.3) %>%
+  mutate(upper=penalty.3+se.3, lower=penalty.3-se.3, model="Adj.2, \n minus multiple earner control", penalty=penalty.3) %>%
+  select(Country, penalty, upper, lower, model)
+
+model4 <- select(LIS_pen, Country, penalty.4, se.4) %>%
+  mutate(upper=penalty.4+se.4, lower=penalty.4-se.4, model="Adj.3, \n minus nonemployment control", penalty=penalty.4) %>%
+  select(Country, penalty, upper, lower, model) 
+
+LIS_pen3 <- rbind(model4, model3, model0) 
+
+LIS_pen3 <- LIS_pen3 %>% mutate(model = fct_relevel(model, "Adj.3, \n minus nonemployment control", "Adj.2, \n minus multiple earner control", "BFH")) %>% arrange(-xtfrm(model), penalty) 
+View(LIS_pen3)
+
+pen3 <- ggplot(data=LIS_pen3, aes(x=reorder(Country, penalty), y=penalty, ymin=lower, ymax=upper)) # orders by average penalty across models 
+
+# fig 3, in colour 
+penalties <- pen3 + geom_pointrange(aes(color=model), position = position_dodge(width = 1)) + labs(x=NULL, y="Probability of Single Mothers' Poverty \n vs. Couple Families", title="Poverty Penalties to Single Motherhood", caption="Source: Luxembourg Income Study, 2010.") + theme(axis.title=element_text(size=10)) +
+scale_y_continuous(labels =scales::percent_format(accuracy=1), limits=c(-0.1,0.40)) + geom_hline(yintercept = 0, lty="dashed") + coord_flip()
+penalties
+ggsave(here("Figures", "penalities.pdf"))
+```
+
+```{r fig 3, echo=FALSE, fig.width = 7, fig.height = 8}
+#fig 3 in greyscale 
+Fig3 <- pen3 + geom_pointrange(aes(color=model), position = position_dodge(width = 0.8))  + labs(x=NULL, y="Probability of Poverty for Single Mothers \n vs. Reference Group") + scale_y_continuous(labels =scales::percent_format(accuracy=1), limits=c(-0.1,0.40)) + scale_color_grey() + coord_flip() + theme_bw() + theme(text=element_text(family="sans"), legend.text=element_text(size=12), axis.text=element_text(size=12),  axis.title=element_text(size=12), panel.border = element_blank()) + geom_hline(yintercept = 0, lty="dashed")
+Fig3
+ggsave(here("Figures","Fig3.pdf"))
+ggsave(here("Figures","Fig3.png"))
+```
+
+```{r fig 3b horizontal, fig.width=8, fig.height=5}
+# horizontal for presentation
+Fig3b <- pen3 + geom_pointrange(aes(color=model), position = position_dodge(width = 0.8))  + labs(x=NULL, y="Probability of Poverty for Single Mothers \n vs. Reference Group") + scale_y_continuous(labels =scales::percent_format(accuracy=1), limits=c(-0.1,0.40)) + scale_color_grey() + theme_bw() + theme(text=element_text(family="sans"), legend.text=element_text(size=12),legend.position = "top", axis.text=element_text(size=12), axis.text.x=element_text(angle=75), axis.title=element_text(size=12), panel.border = element_blank()) + geom_hline(yintercept = 0, lty="dashed")
+Fig3b
+ggsave(here("Figures","Fig3b.png"))
+```
+
+
+```{r, echo=FALSE}
+# Figure 4: single mothers vs fathers
+LIS_dads <- read.xlsx(here("LIS_results", "BFH_data.xlsx"), sheet="Single_Fathers", startRow=2)  
+names(LIS_dads) <- make.unique(names(LIS_dads)) # distinguishes model estimates 
+View(LIS_dads)
+
+mothers <- select(LIS_dads, Country, penalty, se) %>%
+  mutate(upper=penalty+se, lower=penalty-se, model="Single Mothers", penalty=penalty) %>%
+  select(Country, penalty, upper, lower, model) 
+
+fathers <- select(LIS_dads, Country, penalty.1, se.1) %>%
+  mutate(upper=penalty.1+se.1, lower=penalty.1-se.1, model="Single Fathers", penalty=penalty.1) %>% select(Country, penalty, upper, lower, model) 
+
+LIS_dadsall <- rbind(fathers, mothers) 
+
+samp_size <- read.xlsx(here("LIS_results", "BFH_data.xlsx"), sheet="Sample_Size") 
+dad_sel <- inner_join(LIS_dadsall, samp_size, by="Country")
+
+dad_sel <- dad_sel %>% filter(Single.Fathers > 100) 
+
+means <- dad_sel %>% group_by(model) %>% summarize(mean=mean(penalty)); means
+
+dads <- ggplot(data=dad_sel, aes(x=reorder(Country, desc(penalty)), y=penalty, ymin=lower, ymax=upper)) # orders by average penalty across models 
+
+dad_pen <- dads + geom_pointrange(aes(color=model), position=position_dodge(width=0.5)) + labs(x=NULL, y="Probability of Poverty \n vs. Couple Families", title="Poverty Penalties to Single Parenthood", caption="Source: Luxembourg Income Study, 2010.") + theme_bw() + theme(text=element_text(family="sans"), legend.text=element_text(size=12), legend.title=element_blank(), axis.text=element_text(size=12),  axis.title=element_text(size=12), panel.border = element_blank(), legend.position = "top", axis.text.x=element_text(angle=75)) + scale_y_continuous(labels =scales::percent_format(accuracy=1)) + geom_hline(yintercept = 0, lty="dashed")
+dad_pen
+ggsave(here("Figures", "dad_pen.pdf"))
+```
+
+```{r fig 4, echo=FALSE}
+#fig 4 in greyscale 
+Fig4 <- dads + geom_pointrange(aes(color=model), position=position_dodge(width=0.5)) + labs(x=NULL, y="Probability of Poverty \n vs. Couple Families") + theme_bw() +  theme(text=element_text(family="sans"), legend.text=element_text(size=12), legend.title=element_blank(), axis.text=element_text(size=12),  axis.title=element_text(size=12), panel.border = element_blank(), legend.position = "top", axis.text.x=element_text(angle=75)) + scale_y_continuous(labels =scales::percent_format(accuracy=1), limits=c(-0.25, 0.52)) + scale_color_manual(values=c("grey", "black")) + geom_hline(yintercept = 0, lty="dashed")
+Fig4
+ggsave(here("Figures","Fig4.pdf"))
+ggsave(here("Figures","Fig4.png"))
+```
+
+
